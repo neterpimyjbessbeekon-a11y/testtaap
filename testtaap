@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#070a14">
+<title>Системная блокировка</title>
+<style>
+  * {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    -khtml-user-select: none !important;
+    -moz-user-select: none !important;
+    -ms-user-select: none !important;
+    user-select: none !important;
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+    margin: 0; padding: 0;
+  }
+  html,body{
+    height:100%; overscroll-behavior:none;
+    background:#070a14; color:#fff; overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    touch-action:manipulation;
+  }
+  body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);}
+
+  .screen{
+    position:fixed; inset:0; z-index:2;
+    display:flex; flex-direction:column; align-items:center;
+    padding:max(16px,env(safe-area-inset-top)) 18px max(22px,env(safe-area-inset-bottom));
+    background: radial-gradient(120% 80% at 50% -10%, #1d2a52 0%, transparent 60%), radial-gradient(90% 60% at 85% 110%, #2b1a45 0%, transparent 60%), #070a14;
+    transition:opacity .55s ease, transform .55s ease, filter .55s ease;
+  }
+  .screen.gone{opacity:0; transform:scale(1.08); filter:blur(6px); pointer-events:none;}
+
+  .topbar{width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;}
+  .clock{font-size:14px; color:rgba(255,255,255,.45); font-variant-numeric:tabular-nums;}
+  
+  /* Пароль в углу */
+  .hint{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:7px 13px; border-radius:999px;
+    background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.13);
+    font-size:12px; color:rgba(255,255,255,.7);
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    pointer-events: none;
+  }
+  .hint b{
+    font-family:ui-monospace,monospace; font-size:14px; letter-spacing:3px; color:#fff;
+  }
+
+  .center{
+    flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center;
+  }
+  .lock{width:66px; height:66px; color:#8fb4ff; filter:drop-shadow(0 0 18px rgba(106,168,255,.55)); animation:pulse 3s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:.9; transform:translateY(0)} 50%{opacity:1; transform:translateY(-3px)}}
+  h1{font-size:clamp(21px,6vw,29px); font-weight:650; max-width:12ch;}
+  .sub{font-size:clamp(13px,3.6vw,15px); color:rgba(255,255,255,.55); max-width:26ch;}
+
+  .dots{display:flex; gap:16px; margin-top:10px;}
+  .dot{
+    width:14px; height:14px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.3);
+    transition:all .18s;
+  }
+  .dot.filled{background:#fff; border-color:#fff; box-shadow:0 0 14px rgba(255,255,255,.55); transform:scale(1.05);}
+  .dots.error .dot{border-color:#ff5468; background:#ff5468; box-shadow:0 0 14px rgba(255,84,104,.6);}
+  .dots.ok .dot{border-color:#4ade80; background:#4ade80; box-shadow:0 0 16px rgba(74,222,128,.7);}
+  @keyframes shake{0%,100%{transform:translateX(0)} 15%{transform:translateX(-10px)} 30%{transform:translateX(9px)} 45%{transform:translateX(-7px)} 60%{transform:translateX(5px)} 80%{transform:translateX(-3px)}}
+  .dots.shake{animation:shake .45s ease;}
+
+  .pad{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:clamp(10px,2.6vw,20px); width:min(340px,88vw); justify-items:center;
+  }
+  .key{
+    width:clamp(62px,19vw,76px); height:clamp(62px,19vw,76px);
+    border-radius:50%; border:1px solid rgba(255,255,255,.11);
+    background:rgba(255,255,255,.055); color:#fff; font:inherit; font-size:clamp(23px,6.5vw,28px);
+    display:grid; place-items:center; cursor:pointer; transition:all .15s;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  }
+  .key:active{background:rgba(255,255,255,.2); transform:scale(.93);}
+  .key.ghost{background:transparent; border-color:transparent; pointer-events:none;}
+  .key.back{font-size:clamp(18px,5vw,22px);}
+
+  .toast{
+    position:fixed; left:50%; bottom:max(28px,env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px);
+    padding:11px 18px; border-radius:999px; background:rgba(20,25,45,.92); border:1px solid rgba(255,255,255,.14);
+    color:#fff; font-size:14px; white-space:nowrap; backdrop-filter:blur(10px); opacity:0; pointer-events:none; z-index:10; transition:all .25s;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .success{
+    position:fixed; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:16px; padding:28px; text-align:center; background: radial-gradient(120% 80% at 50% 0%, #10261d 0%, transparent 60%), #070a14;
+    opacity:0; pointer-events:none; transform:scale(1.05); transition:all .5s;
+  }
+  .success.show{opacity:1; pointer-events:auto; transform:scale(1);}
+  .check{
+    width:84px; height:84px; border-radius:50%; display:grid; place-items:center;
+    background:rgba(74,222,128,.12); border:2px solid rgba(74,222,128,.55); color:#4ade80; font-size:40px;
+    box-shadow:0 0 40px rgba(74,222,128,.25); animation:pop .5s cubic-bezier(.2,1.4,.5,1);
+  }
+  @keyframes pop{from{transform:scale(.4); opacity:0} to{transform:scale(1); opacity:1}}
+  .success h2{font-size:clamp(22px,6vw,28px); font-weight:650;}
+  .success p{color:rgba(255,255,255,.6); font-size:15px; max-width:26ch;}
+  .btn{
+    margin-top:6px; padding:14px 26px; border-radius:999px; border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.08); color:#fff; font:inherit; font-size:15px; font-weight:550; cursor:pointer; transition:all .2s;
+  }
+  .btn:active{transform:scale(.96); background:rgba(255,255,255,.16);}
+</style>
+</head>
+<body>
+
+<main class="screen" id="screen">
+  <header class="topbar">
+    <div class="clock" id="clock">--:--</div>
+    <div class="hint">🔑 <b>2611</b></div>
+  </header>
+
+  <section class="center">
+    <svg class="lock" viewBox="0 0 64 64">
+      <rect x="14" y="28" width="36" height="28" rx="7" fill="none" stroke="currentColor" stroke-width="3"/>
+      <path d="M22 28v-6a10 10 0 0 1 20 0v6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="32" cy="41" r="3" fill="currentColor"/>
+      <path d="M32 44v5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    <h1>Ваш телефон заблокирован</h1>
+    <p class="sub">Введите пароль, чтобы разблокировать</p>
+    <div class="dots" id="dots">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
+  </section>
+  <section class="pad" id="pad"></section>
+</main>
+
+<div class="success" id="success">
+  <div class="check">✓</div>
+  <h2>Доступ разрешен</h2>
+  <p>Вы прошли проверку на внимательность. Это была шутка 😄</p>
+</div>
+
+<div class="toast" id="toast">Не пытайся выйти 😈</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // Блокировка копирования, долгих нажатий и выделения
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  ['copy', 'cut', 'paste'].forEach(evt => document.addEventListener(evt, e => { e.preventDefault(); showToast("Действие заблокировано"); }));
+  document.addEventListener('selectstart', e => e.preventDefault());
+
+  var PASSWORD = "2611";
+  var input = "";
+  var unlocked = false;
+
+  var dotsEl = document.getElementById("dots");
+  var dots = Array.prototype.slice.call(dotsEl.children);
+  var padEl = document.getElementById("pad");
+  var clockEl = document.getElementById("clock");
+  var toastEl = document.getElementById("toast");
+  var toastTimer = 0;
+
+  function buzz(p){ if (navigator.vibrate) { try { navigator.vibrate(p); } catch(e){} } }
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1500);
+  }
+
+  function tick(){
+    var d = new Date();
+    clockEl.textContent = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+  }
+  tick(); setInterval(tick, 1000);
+
+  ["1","2","3","4","5","6","7","8","9","","0","⌫"].forEach(k => {
+    var b = document.createElement("button");
+    if (k === "") { b.className = "key ghost"; b.disabled = true; padEl.appendChild(b); return; }
+    b.className = "key" + (k === "⌫" ? " back" : "");
+    b.textContent = k;
+    b.addEventListener("pointerdown", e => { e.preventDefault(); onKey(k); });
+    padEl.appendChild(b);
+  });
+
+  function render(){ dots.forEach((d,i) => d.classList.toggle("filled", i < input.length)); }
+
+  function onKey(k){
+    if (unlocked) return;
+    buzz(8);
+    if (k === "⌫"){ if (input.length){ input = input.slice(0,-1); render(); } return; }
+    if (input.length >= 4) return;
+    input += k; render();
+    if (input.length === 4) setTimeout(check, 160);
+  }
+
+  function check(){
+    if (input === PASSWORD){
+      unlocked = true;
+      buzz([20,40,20]);
+      dotsEl.classList.add("ok");
+      setTimeout(() => {
+        document.getElementById("screen").classList.add("gone");
+        document.getElementById("success").classList.add("show");
+      }, 380);
+      return;
+    }
+    dotsEl.classList.add("error","shake");
+    buzz([40,60,40]);
+    setTimeout(() => {
+      dotsEl.classList.remove("error","shake");
+      input = ""; render();
+    }, 520);
+  }
+
+  // Блокировка кнопки "Назад" в браузере (ловушка истории)
+  function armTrap(){
+    if (unlocked) return;
+    try { for(var i=0; i<5; i++) history.pushState({lock: Date.now()}, "", location.href); } catch(e){}
+  }
+  armTrap();
+  
+  window.addEventListener("popstate", () => {
+    if (unlocked) return;
+    armTrap();
+    showToast("Не пытайся выйти 😈");
+  });
+
+  // Предупреждение при закрытии вкладки (работает на Android)
+  window.addEventListener("beforeunload", e => {
+    if (!unlocked) {
+      e.preventDefault();
+      e.returnValue = "";
+      return "";
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
